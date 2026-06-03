@@ -4,7 +4,7 @@ Shared API client used by CLI, TUI, and GUI.
 
 import httpx
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "http://localhost:8001"
 
 
 def search(q: str) -> list:

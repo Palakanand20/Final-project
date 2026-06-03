@@ -1,0 +1,26 @@
+graph TD
+    WikiAPI["🌐 Wikipedia API"]
+    Server["🖥️ Server\nserver/app.py\nFastAPI + SQLite"]
+    DB[("📦 SQLite\nwiki.db")]
+    ClientLib["📚 Shared Client\nclient/api.py"]
+    Web["🌍 Web Interface\nweb/index.html\nD3.js graph"]
+    CLI["💻 CLI\ncli/main.py"]
+    TUI["🖥️ TUI\ntui/main.py\nRich library"]
+    GUI["🪟 GUI\ngui/main.py\nTkinter"]
+
+    WikiAPI -->|"fetch articles"| Server
+    Server <-->|"cache"| DB
+    Server -->|"serves"| Web
+    Server -->|"REST API :8001"| ClientLib
+    ClientLib --> CLI
+    ClientLib --> TUI
+    ClientLib --> GUI
+
+    style Server fill:#1a1d27,stroke:#7c9ef8,color:#e0e0e0
+    style DB fill:#1a1d27,stroke:#50c896,color:#e0e0e0
+    style ClientLib fill:#1a1d27,stroke:#f5a623,color:#e0e0e0
+    style Web fill:#1a1d27,stroke:#7c9ef8,color:#e0e0e0
+    style CLI fill:#1a1d27,stroke:#50c896,color:#e0e0e0
+    style TUI fill:#1a1d27,stroke:#50c896,color:#e0e0e0
+    style GUI fill:#1a1d27,stroke:#50c896,color:#e0e0e0
+    style WikiAPI fill:#1a1d27,stroke:#e05c5c,color:#e0e0e0
