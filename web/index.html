@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Wikipedia Rabbit Hole Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  header { padding: 12px 20px; background: #1a1d27; border-bottom: 1px solid #2a2d3e; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 1.1rem; font-weight: 700; color: #7c9ef8; white-space: nowrap; }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 400px; }
+  #search-input { width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid #2a2d3e; background: #0f1117; color: #e0e0e0; font-size: 0.9rem; outline: none; }
+  #search-input:focus { border-color: #7c9ef8; }
+  #suggestions { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 8px; z-index: 100; overflow: hidden; }
+  #suggestions div { padding: 8px 12px; cursor: pointer; font-size: 0.85rem; }
+  #suggestions div:hover { background: #2a2d3e; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  label { font-size: 0.8rem; color: #888; }
+  select, button { padding: 7px 12px; border-radius: 7px; border: 1px solid #2a2d3e; background: #1a1d27; color: #e0e0e0; font-size: 0.85rem; cursor: pointer; }
+  button { border-color: #7c9ef8; color: #7c9ef8; }
+  button:hover { background: #7c9ef8; color: #0f1117; }
+  main { flex: 1; display: flex; overflow: hidden; }
+  #graph-container { flex: 1; position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; background: #0f1117; }
+  .link { stroke: #2a2d3e; stroke-width: 1.5; }
+  .node circle { stroke-width: 2; cursor: pointer; }
+  .node circle:hover { stroke: #fff; }
+  .node text { font-size: 11px; fill: #ccc; pointer-events: none; text-anchor: middle; }
+  .depth-0 circle { fill: #7c9ef8; stroke: #a8bfff; }
+  .depth-1 circle { fill: #50c896; stroke: #7de6b4; }
+  .depth-2 circle { fill: #f5a623; stroke: #ffc966; }
+  .depth-3 circle { fill: #e05c5c; stroke: #ff8888; }
+  #tooltip { position: absolute; pointer-events: none; background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 10px; padding: 12px 14px; max-width: 280px; font-size: 0.8rem; line-height: 1.5; opacity: 0; transition: opacity 0.15s; z-index: 50; }
+  #tooltip.visible { opacity: 1; }
+  #tooltip h3 { font-size: 0.9rem; color: #7c9ef8; margin-bottom: 6px; }
+  #tooltip p { color: #aaa; }
+  #tooltip .cats { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  #tooltip .cat-tag { background: #2a2d3e; border-radius: 4px; padding: 2px 6px; font-size: 0.72rem; color: #888; }
+  #tooltip .expand-btn { margin-top: 8px; display: inline-block; padding: 4px 10px; border-radius: 5px; background: #7c9ef8; color: #0f1117; font-size: 0.78rem; cursor: pointer; border: none; }
+  #sidebar { width: 240px; background: #1a1d27; border-left: 1px solid #2a2d3e; overflow-y: auto; padding: 14px; font-size: 0.82rem; display: flex; flex-direction: column; gap: 14px; }
+  #sidebar h2 { font-size: 0.85rem; color: #7c9ef8; }
+  .save-row { display: flex; gap: 6px; }
+  .save-row input { flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid #2a2d3e; background: #0f1117; color: #e0e0e0; font-size: 0.8rem; }
+  .saved-item { padding: 7px 10px; background: #0f1117; border-radius: 7px; cursor: pointer; border: 1px solid transparent; }
+  .saved-item:hover { border-color: #7c9ef8; }
+  .saved-item .item-title { font-weight: 600; color: #e0e0e0; }
+  .saved-item .item-meta { color: #666; font-size: 0.75rem; margin-top: 2px; }
+  #status { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 20px; padding: 6px 16px; font-size: 0.78rem; color: #7c9ef8; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  #status.show { opacity: 1; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 0.75rem; color: #888; align-items: center; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Wiki Rabbit Hole</h1>
+  <div class="search-wrap">
+    <input id="search-input" placeholder="Search Wikipedia..." autocomplete="off"/>
+    <div id="suggestions"></div>
+  </div>
+  <div class="controls">
+    <label>Depth
+      <select id="depth-select">
+        <option value="1" selected>1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+      </select>
+    </label>
+    <button id="explore-btn">Explore</button>
+    <label>Filter <select id="filter-cat"><option value="">All categories</option></select></label>
+  </div>
+  <div class="legend">
+    <span><span class="legend-dot" style="background:#7c9ef8"></span>Root</span>
+    <span><span class="legend-dot" style="background:#50c896"></span>D1</span>
+    <span><span class="legend-dot" style="background:#f5a623"></span>D2</span>
+    <span><span class="legend-dot" style="background:#e05c5c"></span>D3</span>
+  </div>
+</header>
+<main>
+  <div id="graph-container">
+    <svg id="graph"></svg>
+    <div id="tooltip"></div>
+    <div id="status"></div>
+  </div>
+  <div id="sidebar">
+    <div>
+      <h2>Save Graph</h2>
+      <div class="save-row" style="margin-top:8px">
+        <input id="save-name" placeholder="Name..."/>
+        <button id="save-btn">Save</button>
+      </div>
+    </div>
+    <div>
+      <h2>Saved Graphs</h2>
+      <div id="saved-list" style="margin-top:8px;display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+</main>
+<script>
+var API = "http://127.0.0.1:8001";
+var graphData = {nodes:[],edges:[]};
+var simulation, svg, linkSel, nodeSel;
+var currentRoot = "", currentDepth = 1, activeFilter = "";
+
+function showStatus(msg, dur) {
+  dur = dur || 2500;
+  var el = document.getElementById("status");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(function() { el.classList.remove("show"); }, dur);
+}
+
+var searchInput = document.getElementById("search-input");
+var suggestionsEl = document.getElementById("suggestions");
+var dbt;
+
+searchInput.addEventListener("input", function() {
+  clearTimeout(dbt);
+  var q = searchInput.value.trim();
+  if (q.length < 2) { suggestionsEl.innerHTML = ""; return; }
+  dbt = setTimeout(async function() {
+    var res = await fetch(API + "/api/search?q=" + encodeURIComponent(q));
+    var items = await res.json();
+    suggestionsEl.innerHTML = items.map(function(i) {
+      return "<div onclick=\"pickSuggestion('" + i.replace(/'/g, "\\'") + "')\">" + i + "</div>";
+    }).join("");
+  }, 250);
+});
+
+function pickSuggestion(t) { searchInput.value = t; suggestionsEl.innerHTML = ""; }
+
+document.addEventListener("click", function(e) {
+  if (!e.target.closest(".search-wrap")) suggestionsEl.innerHTML = "";
+});
+
+document.getElementById("explore-btn").addEventListener("click", function() {
+  var t = searchInput.value.trim();
+  if (t) loadGraph(t, +document.getElementById("depth-select").value);
+});
+
+searchInput.addEventListener("keydown", function(e) {
+  if (e.key === "Enter") document.getElementById("explore-btn").click();
+});
+
+async function loadGraph(title, depth) {
+  showStatus("Fetching...", 60000);
+  currentRoot = title; currentDepth = depth;
+  var res = await fetch(API + "/api/graph?title=" + encodeURIComponent(title) + "&depth=" + depth);
+  graphData = await res.json();
+  activeFilter = "";
+  document.getElementById("filter-cat").value = "";
+  populateCats();
+  renderGraph(graphData);
+  showStatus(graphData.nodes.length + " nodes, " + graphData.edges.length + " edges");
+}
+
+function populateCats() {
+  var cats = new Set();
+  graphData.nodes.forEach(function(n) { (n.categories || []).forEach(function(c) { cats.add(c); }); });
+  var sel = document.getElementById("filter-cat");
+  sel.innerHTML = "<option value=''>All categories</option>" +
+    Array.from(cats).sort().map(function(c) { return "<option value='" + c + "'>" + c + "</option>"; }).join("");
+}
+
+document.getElementById("filter-cat").addEventListener("change", function(e) {
+  activeFilter = e.target.value;
+  applyFilter();
+});
+
+function applyFilter() {
+  if (!nodeSel) return;
+  var keep = activeFilter
+    ? new Set(graphData.nodes.filter(function(n) { return (n.categories || []).includes(activeFilter); }).map(function(n) { return n.id; }))
+    : null;
+  nodeSel.style("opacity", function(d) { return !keep || keep.has(d.id) ? 1 : 0.15; });
+  linkSel.style("opacity", function(d) {
+    var s = d.source.id || d.source, t = d.target.id || d.target;
+    return !keep || (keep.has(s) && keep.has(t)) ? 1 : 0.05;
+  });
+}
+
+function renderGraph(data) {
+  var c = document.getElementById("graph-container");
+  var W = c.clientWidth, H = c.clientHeight;
+  d3.select("#graph").selectAll("*").remove();
+  svg = d3.select("#graph");
+  var g = svg.append("g");
+  svg.call(d3.zoom().scaleExtent([0.2, 4]).on("zoom", function(e) { g.attr("transform", e.transform); }));
+
+  linkSel = g.append("g").selectAll("line").data(data.edges).join("line").attr("class", "link");
+
+  nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
+    .attr("class", function(d) { return "node depth-" + Math.min(d.depth, 3); })
+    .call(d3.drag()
+      .on("start", function(e, d) { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag",  function(e, d) { d.fx = e.x; d.fy = e.y; })
+      .on("end",   function(e, d) { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  nodeSel.append("circle")
+    .attr("r", function(d) { return d.depth === 0 ? 18 : 10; })
+    .on("mouseover", onHover)
+    .on("mouseout", onOut)
+    .on("click", function(e) { e.stopPropagation(); });
+
+  nodeSel.append("text")
+    .attr("dy", function(d) { return (d.depth === 0 ? 18 : 10) + 13; })
+    .text(function(d) { return d.id.length > 20 ? d.id.slice(0, 18) + "..." : d.id; });
+
+  simulation = d3.forceSimulation(data.nodes)
+    .force("link", d3.forceLink(data.edges).id(function(d) { return d.id; }).distance(110))
+    .force("charge", d3.forceManyBody().strength(-300))
+    .force("center", d3.forceCenter(W / 2, H / 2))
+    .force("collision", d3.forceCollide(30))
+    .on("tick", function() {
+      linkSel.attr("x1", function(d) { return d.source.x; }).attr("y1", function(d) { return d.source.y; })
+             .attr("x2", function(d) { return d.target.x; }).attr("y2", function(d) { return d.target.y; });
+      nodeSel.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+    });
+
+  applyFilter();
+}
+
+var tooltip = document.getElementById("tooltip");
+
+function onHover(event, d) {
+  var cats = (d.categories || []).slice(0, 5).map(function(c) { return "<span class='cat-tag'>" + c + "</span>"; }).join("");
+  var sum = d.summary ? d.summary.slice(0, 160) + "..." : "No summary.";
+  tooltip.innerHTML = "<h3>" + d.id + "</h3><p>" + sum + "</p>" +
+    (cats ? "<div class='cats'>" + cats + "</div>" : "") +
+    "<button class='expand-btn' id='expbtn'>Expand</button>";
+  var nodeId = d.id;
+  document.getElementById("expbtn").onclick = function() { expandNode(nodeId); };
+  tooltip.classList.add("visible");
+  moveTooltip(event);
+}
+
+function onOut() { tooltip.classList.remove("visible"); }
+
+function moveTooltip(e) {
+  var r = document.getElementById("graph-container").getBoundingClientRect();
+  var x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+  if (x + 290 > r.width) x -= 300;
+  if (y + 200 > r.height) y -= 160;
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+}
+
+document.getElementById("graph").addEventListener("mousemove", function(e) {
+  if (tooltip.classList.contains("visible")) moveTooltip(e);
+});
+
+async function expandNode(title) {
+  tooltip.classList.remove("visible");
+  showStatus("Expanding...", 60000);
+  var res = await fetch(API + "/api/expand?title=" + encodeURIComponent(title));
+  var data = await res.json();
+  var ids = new Set(graphData.nodes.map(function(n) { return n.id; }));
+  var src = graphData.nodes.find(function(n) { return n.id === title; });
+  var sd = src ? src.depth : 1;
+  var added = 0;
+  data.links.forEach(function(link) {
+    if (!ids.has(link)) { graphData.nodes.push({id: link, summary: "", categories: [], depth: sd + 1}); ids.add(link); added++; }
+    var ex = graphData.edges.some(function(e) {
+      return (e.source === title || (e.source && e.source.id === title)) &&
+             (e.target === link  || (e.target && e.target.id === link));
+    });
+    if (!ex) graphData.edges.push({source: title, target: link});
+  });
+  populateCats();
+  renderGraph(graphData);
+  showStatus("Added " + added + " nodes");
+}
+
+document.getElementById("save-btn").addEventListener("click", async function() {
+  var name = document.getElementById("save-name").value.trim();
+  if (!name) { alert("Enter a name"); return; }
+  await fetch(API + "/api/graphs", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name: name, root: currentRoot, depth: currentDepth, data: graphData})
+  });
+  document.getElementById("save-name").value = "";
+  loadSaved();
+  showStatus("Saved as " + name);
+});
+
+async function loadSaved() {
+  var res = await fetch(API + "/api/graphs");
+  var list = await res.json();
+  var el = document.getElementById("saved-list");
+  if (!list.length) { el.innerHTML = "<div style='color:#555;font-size:0.78rem'>No saved graphs.</div>"; return; }
+  el.innerHTML = list.map(function(g) {
+    return "<div class='saved-item' onclick='loadSavedGraph(" + g.id + ")'>" +
+      "<div class='item-title'>" + g.name + "</div>" +
+      "<div class='item-meta'>" + g.root + " - depth " + g.depth + "</div></div>";
+  }).join("");
+}
+
+async function loadSavedGraph(id) {
+  var res = await fetch(API + "/api/graphs/" + id);
+  var saved = await res.json();
+  graphData = saved.data; currentRoot = saved.root; currentDepth = saved.depth;
+  searchInput.value = saved.root;
+  populateCats(); renderGraph(graphData);
+  showStatus("Loaded " + saved.name);
+}
+
+loadSaved();
+</script>
+</body>
+</html>
