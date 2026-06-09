@@ -152,8 +152,14 @@ def build_graph(root: str, depth: int = 1, max_links: int = 15):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.get("/api/search")
+@app.get("/api/search", summary="Search Wikipedia titles", tags=["Wikipedia"])
 def search(q: str = ""):
+    """
+    Autocomplete search using the Wikipedia OpenSearch API.
+
+    Returns up to 8 article titles matching the query string.
+    Returns an empty list when `q` is blank or the Wikipedia API is unreachable.
+    """
     if not q:
         return []
     headers = {"User-Agent": "WikiExplorer/1.0 (educational project; palakanand912@gmail.com)"}
@@ -163,14 +169,28 @@ def search(q: str = ""):
     return r.json()[1] if r.ok else []
 
 
-@app.get("/api/graph")
+@app.get("/api/graph", summary="Build article graph", tags=["Graph"])
 def graph(title: str, depth: int = 1):
+    """
+    Build a BFS graph starting from the given Wikipedia article title.
+
+    Fetches each article from the cache or Wikipedia, then follows links
+    up to `depth` hops (capped at 3). Returns `{nodes, edges}` where each
+    node contains `{id, summary, categories, depth}`.
+    """
     depth = min(depth, 3)
     return build_graph(title, depth=depth)
 
 
-@app.get("/api/expand")
+@app.get("/api/expand", summary="Expand a single node", tags=["Graph"])
 def expand(title: str):
+    """
+    Return a single article node plus its outgoing links.
+
+    Useful for lazily adding neighbours to an existing graph without
+    rebuilding it from scratch. Returns 404 if the article is not found.
+    Response shape: `{node: {id, summary, categories}, links: [str, ...]}`.
+    """
     data = get_or_fetch(title)
     if not data:
         raise HTTPException(status_code=404, detail="Not found")
@@ -180,15 +200,29 @@ def expand(title: str):
     }
 
 
-@app.get("/api/graphs")
+@app.get("/api/graphs", summary="List saved graphs", tags=["Saved Graphs"])
 def list_graphs():
+    """
+    Return metadata for all saved graphs, newest first.
+
+    Each item contains `{id, name, root, depth}`. The heavy `data` field
+    is intentionally excluded — use `GET /api/graphs/{id}` to retrieve it.
+    """
     with get_db() as conn:
         rows = conn.execute("SELECT id, name, root, depth FROM saved_graphs ORDER BY rowid DESC").fetchall()
     return [dict(r) for r in rows]
 
 
-@app.post("/api/graphs")
+@app.post("/api/graphs", summary="Save a graph", tags=["Saved Graphs"])
 def save_graph(body: dict):
+    """
+    Persist a graph to the database.
+
+    Required fields: `name` (string, unique), `root` (article title),
+    `depth` (integer, defaults to 1), `data` (the full `{nodes, edges}` object).
+    Saving with a duplicate name overwrites the previous entry.
+    Returns `{ok: true}` on success, 400 if `name` or `root` is empty.
+    """
     name = body.get("name", "").strip()
     root = body.get("root", "").strip()
     depth = body.get("depth", 1)
@@ -203,8 +237,14 @@ def save_graph(body: dict):
     return {"ok": True}
 
 
-@app.get("/api/graphs/{gid}")
+@app.get("/api/graphs/{gid}", summary="Load a saved graph", tags=["Saved Graphs"])
 def load_graph(gid: int):
+    """
+    Retrieve a single saved graph by its integer ID.
+
+    Returns the full row including the `data` field (parsed from JSON).
+    Returns 404 if no graph with the given ID exists.
+    """
     with get_db() as conn:
         row = conn.execute("SELECT * FROM saved_graphs WHERE id=?", (gid,)).fetchone()
     if not row:

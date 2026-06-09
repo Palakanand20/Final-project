@@ -8,4 +8,17 @@ dependencies = [
     "requests",
     "rich",
     "httpx",
+    "pytest",
+    "pytest-cov",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["server", "client", "cli", "tui"]
+omit = ["*/test_*", "gui/*", "*/conftest*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
