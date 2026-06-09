@@ -7,15 +7,16 @@ Usage:
 """
 
 import sys
+
 sys.path.insert(0, ".")
 
 from rich.console import Console
-from rich.table import Table
-from rich.tree import Tree
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich import print as rprint
-from client.api import search, get_graph, list_graphs, save_graph, load_graph
+from rich.table import Table
+from rich.tree import Tree
+
+from client.api import get_graph, list_graphs, load_graph, save_graph, search
 
 console = Console()
 
@@ -24,12 +25,14 @@ def show_graph(data, title):
     nodes = data.get("nodes", [])
     edges = data.get("edges", [])
 
-    console.print(Panel(
-        f"[bold cyan]{title}[/bold cyan]\n"
-        f"[green]{len(nodes)} nodes[/green]  [yellow]{len(edges)} edges[/yellow]",
-        title="Graph",
-        border_style="blue"
-    ))
+    console.print(
+        Panel(
+            f"[bold cyan]{title}[/bold cyan]\n"
+            f"[green]{len(nodes)} nodes[/green]  [yellow]{len(edges)} edges[/yellow]",
+            title="Graph",
+            border_style="blue",
+        )
+    )
 
     # Build tree by depth
     by_depth = {}
@@ -40,7 +43,6 @@ def show_graph(data, title):
     depth_colors = ["bold blue", "bold green", "bold yellow", "bold red"]
 
     tree = Tree(f"[bold blue]{title}[/bold blue]")
-    node_map = {title: tree}
 
     for depth in sorted(by_depth):
         color = depth_colors[min(depth, 3)]
@@ -90,11 +92,13 @@ def show_saved_graphs(graphs):
 
 
 def main():
-    console.print(Panel(
-        "[bold cyan]Wikipedia Rabbit Hole Explorer[/bold cyan]\n"
-        "[dim]Explore how Wikipedia articles connect[/dim]",
-        border_style="cyan"
-    ))
+    console.print(
+        Panel(
+            "[bold cyan]Wikipedia Rabbit Hole Explorer[/bold cyan]\n"
+            "[dim]Explore how Wikipedia articles connect[/dim]",
+            border_style="cyan",
+        )
+    )
 
     while True:
         console.print("\n[bold]What would you like to do?[/bold]")
@@ -123,7 +127,9 @@ def main():
                 data = get_graph(topic, depth)
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
-                console.print("[dim]Is the server running? python -m uvicorn server.app:app --reload --port 8001[/dim]")
+                console.print(
+                    "[dim]Is the server running? python -m uvicorn server.app:app --reload --port 8001[/dim]"
+                )
                 continue
 
             show_graph(data, topic)

@@ -113,3 +113,26 @@ The composite primary key `(source, target)` prevents duplicate edges. `INSERT O
 - D3 `forceSimulation` runs a physics engine in the browser. Each node has repulsive charge (`-300`), links have a rest length (`110px`), and a centering force keeps the graph visible. The simulation runs until kinetic energy drops below a threshold, then stops — the user can then drag nodes manually.
 - Node radius is 18px for the root (depth=0) and 10px for others.
 - Colours encode depth: blue=0, green=1, yellow=2, red=3+.
+
+## Configuration
+
+All tuneable constants live in `config.py` at the project root. No magic numbers appear in application code. Import from `config` to use them:
+
+```python
+from config import GRAPH_MAX_DEPTH, ARTICLE_SUMMARY_MAX_CHARS
+```
+
+See the file for the full list and their documented purpose.
+
+## Logging
+
+The server uses Python's standard `logging` module (logger name: `wiki_explorer`). Log levels:
+- `INFO`: Wikipedia fetches, cache misses, graph completion, server start/stop
+- `DEBUG`: Cache hits, per-article fetch details
+- `WARNING`: Missing Wikipedia articles
+
+To increase verbosity, set `level=logging.DEBUG` in `server/app.py`.
+
+## Health Check
+
+`GET /api/health` returns server status, DB connectivity, uptime, and version. It never raises an HTTP error — a degraded state is reported in the response body.

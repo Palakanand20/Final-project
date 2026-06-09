@@ -12,23 +12,39 @@ import sys
 import textwrap
 
 sys.path.insert(0, ".")
-from client.api import search, get_graph, list_graphs, load_graph
+from client.api import get_graph, list_graphs, load_graph, search
 
 
-def bold(t):   return "\033[1m" + t + "\033[0m"
-def blue(t):   return "\033[34m" + t + "\033[0m"
-def green(t):  return "\033[32m" + t + "\033[0m"
-def dim(t):    return "\033[2m" + t + "\033[0m"
+def bold(t):
+    return "\033[1m" + t + "\033[0m"
 
-DEPTH_COLORS = [blue, green,
-                lambda t: "\033[33m" + t + "\033[0m",
-                lambda t: "\033[31m" + t + "\033[0m"]
+
+def blue(t):
+    return "\033[34m" + t + "\033[0m"
+
+
+def green(t):
+    return "\033[32m" + t + "\033[0m"
+
+
+def dim(t):
+    return "\033[2m" + t + "\033[0m"
+
+
+DEPTH_COLORS = [
+    blue,
+    green,
+    lambda t: "\033[33m" + t + "\033[0m",
+    lambda t: "\033[31m" + t + "\033[0m",
+]
 
 
 def print_graph(data):
     nodes = data.get("nodes", [])
     edges = data.get("edges", [])
-    print("\n" + bold("Nodes: ") + str(len(nodes)) + "   " + bold("Edges: ") + str(len(edges)) + "\n")
+    print(
+        "\n" + bold("Nodes: ") + str(len(nodes)) + "   " + bold("Edges: ") + str(len(edges)) + "\n"
+    )
 
     by_depth = {}
     for n in nodes:
@@ -42,8 +58,12 @@ def print_graph(data):
         for n in sorted(by_depth[depth], key=lambda x: x["id"]):
             print("  " + col("*") + " " + bold(n["id"]))
             if n.get("summary"):
-                wrapped = textwrap.fill(n["summary"][:200], width=70,
-                                        initial_indent="      ", subsequent_indent="      ")
+                wrapped = textwrap.fill(
+                    n["summary"][:200],
+                    width=70,
+                    initial_indent="      ",
+                    subsequent_indent="      ",
+                )
                 print(dim(wrapped))
         print()
 
@@ -88,7 +108,17 @@ def cmd_list(args):
         return
     print(bold("\nSaved Graphs:"))
     for g in graphs:
-        print("  " + blue(str(g["id"])) + ". " + bold(g["name"]) + "  --  " + g["root"] + " (depth " + str(g["depth"]) + ")")
+        print(
+            "  "
+            + blue(str(g["id"]))
+            + ". "
+            + bold(g["name"])
+            + "  --  "
+            + g["root"]
+            + " (depth "
+            + str(g["depth"])
+            + ")"
+        )
     print()
 
 
@@ -98,7 +128,16 @@ def cmd_load(args):
     except Exception as e:
         print("Error: " + str(e), file=sys.stderr)
         sys.exit(1)
-    print("\n" + bold("Loaded: ") + saved["name"] + "  (" + saved["root"] + ", depth " + str(saved["depth"]) + ")\n")
+    print(
+        "\n"
+        + bold("Loaded: ")
+        + saved["name"]
+        + "  ("
+        + saved["root"]
+        + ", depth "
+        + str(saved["depth"])
+        + ")\n"
+    )
     print_graph(saved["data"])
 
 

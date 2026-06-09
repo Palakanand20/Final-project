@@ -1,5 +1,7 @@
 # Wiki Explorer
 
+[![CI](https://github.com/Palakanand20/Final-project/actions/workflows/ci.yml/badge.svg)](https://github.com/Palakanand20/Final-project/actions/workflows/ci.yml)
+
 A multi-interface tool for exploring how Wikipedia articles connect to each other. Enter any topic and see the graph of related articles — then drill down, save, and revisit interesting knowledge maps.
 
 ## Table of Contents
@@ -201,6 +203,19 @@ TOTAL  370  3  99%
 The suite has **154 tests** across four files covering unit, contract, and integration scenarios. No real Wikipedia API calls are made — all network calls are mocked with `unittest.mock.patch`.
 
 See [docs/testing.md](docs/testing.md) for a full explanation of the test structure, how to add new tests, and how to read the coverage report.
+
+---
+
+## Quality Gates
+
+```bash
+# All checks in one command
+ruff check . && ruff format --check . \
+  && python3 -m mypy server/app.py client/api.py \
+  && python3 -m pytest tests/ --cov=. --cov-fail-under=90 -q
+```
+
+See [docs/code-quality.md](docs/code-quality.md) for details.
 
 ---
 

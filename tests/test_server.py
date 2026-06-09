@@ -9,15 +9,16 @@ Integration tests: verify multi-step workflows end-to-end with a real DB.
 import json
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests as req_lib
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def temp_db(tmp_path, monkeypatch):
@@ -25,16 +26,28 @@ def temp_db(tmp_path, monkeypatch):
     db_path = str(tmp_path / "test_wiki.db")
     monkeypatch.setattr("server.app.DB_PATH", db_path)
     import server.app as app_module
+
     app_module.DB_PATH = db_path
+    # Close and reset any thread-local connection so get_db() opens a fresh
+    # connection to this test's DB_PATH rather than a previous test's path.
+    if hasattr(app_module._local, "conn") and app_module._local.conn:
+        app_module._local.conn.close()
+    app_module._local.conn = None
     app_module.init_db()
     yield db_path
+    # Clean up the connection after the test.
+    if hasattr(app_module._local, "conn") and app_module._local.conn:
+        app_module._local.conn.close()
+    app_module._local.conn = None
 
 
 @pytest.fixture
 def client(temp_db):
     """Return a FastAPI TestClient backed by the temp database."""
     from fastapi.testclient import TestClient
+
     from server.app import app
+
     return TestClient(app)
 
 
@@ -59,7 +72,7 @@ def _wiki_page_response(title, extract="", categories=None, links=None, page_id=
                     "title": title,
                     "extract": extract,
                     "categories": [{"title": f"Category:{c}"} for c in categories],
-                    "links": [{"title": l} for l in links],
+                    "links": [{"title": lnk} for lnk in links],
                 }
             }
         }
@@ -73,16 +86,19 @@ def _wiki_missing_response(title):
 
 # ── Unit Tests: fetch_article ─────────────────────────────────────────────────
 
+
 class TestFetchArticle:
     """Unit tests for the Wikipedia fetch helper."""
 
     def test_fetch_article_returns_dict_with_expected_keys(self):
         """fetch_article returns a dict with title, summary, categories, links."""
         from server.app import fetch_article
+
         response_data = _wiki_page_response(
-            "Black hole", "A black hole...",
+            "Black hole",
+            "A black hole...",
             categories=["Astrophysics"],
-            links=["Albert Einstein", "General relativity"]
+            links=["Albert Einstein", "General relativity"],
         )
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -98,6 +114,7 @@ class TestFetchArticle:
     def test_fetch_article_missing_page_returns_none(self):
         """fetch_article returns None when the Wikipedia page doesn't exist."""
         from server.app import fetch_article
+
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = _wiki_missing_response("Nonexistent")
             mock_get.return_value.raise_for_status = MagicMock()
@@ -107,9 +124,9 @@ class TestFetchArticle:
     def test_fetch_article_filters_wikipedia_prefix_links(self):
         """fetch_article removes links starting with 'Wikipedia:'."""
         from server.app import fetch_article
+
         response_data = _wiki_page_response(
-            "Test", "",
-            links=["Real Article", "Wikipedia:Tutorial", "Another Article"]
+            "Test", "", links=["Real Article", "Wikipedia:Tutorial", "Another Article"]
         )
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -118,29 +135,27 @@ class TestFetchArticle:
 
         assert "Real Article" in result["links"]
         assert "Another Article" in result["links"]
-        assert not any(l.startswith("Wikipedia:") for l in result["links"])
+        assert not any(lnk.startswith("Wikipedia:") for lnk in result["links"])
 
     def test_fetch_article_filters_help_prefix_links(self):
         """fetch_article removes links starting with 'Help:'."""
         from server.app import fetch_article
-        response_data = _wiki_page_response(
-            "Test", "",
-            links=["Good Article", "Help:Contents"]
-        )
+
+        response_data = _wiki_page_response("Test", "", links=["Good Article", "Help:Contents"])
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
             mock_get.return_value.raise_for_status = MagicMock()
             result = fetch_article("Test")
 
         assert "Good Article" in result["links"]
-        assert not any(l.startswith("Help:") for l in result["links"])
+        assert not any(lnk.startswith("Help:") for lnk in result["links"])
 
     def test_fetch_article_filters_template_prefix_links(self):
         """fetch_article removes links starting with 'Template:'."""
         from server.app import fetch_article
+
         response_data = _wiki_page_response(
-            "Test", "",
-            links=["Real Link", "Template:Infobox person"]
+            "Test", "", links=["Real Link", "Template:Infobox person"]
         )
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -148,26 +163,25 @@ class TestFetchArticle:
             result = fetch_article("Test")
 
         assert "Real Link" in result["links"]
-        assert not any(l.startswith("Template:") for l in result["links"])
+        assert not any(lnk.startswith("Template:") for lnk in result["links"])
 
     def test_fetch_article_filters_portal_prefix_links(self):
         """fetch_article removes links starting with 'Portal:'."""
         from server.app import fetch_article
-        response_data = _wiki_page_response(
-            "Test", "",
-            links=["Normal Article", "Portal:Science"]
-        )
+
+        response_data = _wiki_page_response("Test", "", links=["Normal Article", "Portal:Science"])
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
             mock_get.return_value.raise_for_status = MagicMock()
             result = fetch_article("Test")
 
         assert "Normal Article" in result["links"]
-        assert not any(l.startswith("Portal:") for l in result["links"])
+        assert not any(lnk.startswith("Portal:") for lnk in result["links"])
 
     def test_fetch_article_truncates_summary_at_500_chars(self):
         """fetch_article truncates extract to 500 characters maximum."""
         from server.app import fetch_article
+
         response_data = _wiki_page_response("Test", LONG_SUMMARY)
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -179,9 +193,9 @@ class TestFetchArticle:
     def test_fetch_article_parses_categories_removes_category_prefix(self):
         """fetch_article strips the 'Category:' prefix from category titles."""
         from server.app import fetch_article
+
         response_data = _wiki_page_response(
-            "Test", "",
-            categories=["Astrophysics", "General relativity"]
+            "Test", "", categories=["Astrophysics", "General relativity"]
         )
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -195,6 +209,7 @@ class TestFetchArticle:
     def test_fetch_article_network_timeout_raises(self):
         """fetch_article propagates network timeout exceptions."""
         from server.app import fetch_article
+
         with patch("requests.get", side_effect=req_lib.exceptions.Timeout("Timeout")):
             with pytest.raises(req_lib.exceptions.Timeout):
                 fetch_article("Black hole")
@@ -202,6 +217,7 @@ class TestFetchArticle:
     def test_fetch_article_http_403_raises(self):
         """fetch_article propagates HTTP errors from raise_for_status."""
         from server.app import fetch_article
+
         with patch("requests.get") as mock_get:
             mock_get.return_value.raise_for_status.side_effect = req_lib.exceptions.HTTPError("403")
             with pytest.raises(req_lib.exceptions.HTTPError):
@@ -209,7 +225,8 @@ class TestFetchArticle:
 
     def test_fetch_article_passes_correct_params_to_api(self):
         """fetch_article sends the right query parameters to the Wikipedia API."""
-        from server.app import fetch_article, WIKI_API
+        from server.app import WIKI_API, fetch_article
+
         response_data = _wiki_page_response("Black hole", "...")
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -226,6 +243,7 @@ class TestFetchArticle:
     def test_fetch_article_uses_page_title_not_input_title(self):
         """fetch_article uses the page title from the response (supports redirects)."""
         from server.app import fetch_article
+
         response_data = _wiki_page_response("Black Hole (canonical)")
         with patch("requests.get") as mock_get:
             mock_get.return_value.json.return_value = response_data
@@ -237,6 +255,7 @@ class TestFetchArticle:
     def test_fetch_article_returns_all_unfiltered_links(self):
         """fetch_article returns all non-namespaced links."""
         from server.app import fetch_article
+
         good_links = ["Alpha", "Beta", "Gamma"]
         bad_links = ["Wikipedia:X", "Help:Y", "Template:Z", "Portal:W"]
         response_data = _wiki_page_response("Test", "", links=good_links + bad_links)
@@ -250,12 +269,14 @@ class TestFetchArticle:
 
 # ── Unit Tests: get_or_fetch ──────────────────────────────────────────────────
 
+
 class TestGetOrFetch:
     """Unit tests for the SQLite caching layer."""
 
     def test_get_or_fetch_calls_fetch_on_cache_miss(self):
         """get_or_fetch calls fetch_article when article is not in the DB."""
         from server.app import get_or_fetch
+
         with patch("server.app.fetch_article", return_value=MOCK_ARTICLE) as mock_fetch:
             result = get_or_fetch("Black hole")
         mock_fetch.assert_called_once_with("Black hole")
@@ -264,6 +285,7 @@ class TestGetOrFetch:
     def test_get_or_fetch_does_not_call_fetch_on_cache_hit(self):
         """get_or_fetch uses the cached DB value and skips fetch_article."""
         from server.app import get_or_fetch
+
         with patch("server.app.fetch_article", return_value=MOCK_ARTICLE):
             get_or_fetch("Black hole")  # prime the cache
         with patch("server.app.fetch_article") as mock_fetch:
@@ -273,6 +295,7 @@ class TestGetOrFetch:
     def test_get_or_fetch_returns_none_for_missing_article(self):
         """get_or_fetch returns None when fetch_article returns None."""
         from server.app import get_or_fetch
+
         with patch("server.app.fetch_article", return_value=None):
             result = get_or_fetch("Totally Fake Page 12345")
         assert result is None
@@ -280,8 +303,9 @@ class TestGetOrFetch:
     def test_get_or_fetch_stores_article_in_db(self):
         """get_or_fetch persists the fetched article to the articles table."""
         import sqlite3
-        from server.app import get_or_fetch
+
         import server.app as app_module
+        from server.app import get_or_fetch
 
         with patch("server.app.fetch_article", return_value=MOCK_ARTICLE):
             get_or_fetch("Black hole")
@@ -296,8 +320,9 @@ class TestGetOrFetch:
     def test_get_or_fetch_stores_links_in_db(self):
         """get_or_fetch persists article links to the links table."""
         import sqlite3
-        from server.app import get_or_fetch
+
         import server.app as app_module
+        from server.app import get_or_fetch
 
         with patch("server.app.fetch_article", return_value=MOCK_ARTICLE):
             get_or_fetch("Black hole")
@@ -313,8 +338,9 @@ class TestGetOrFetch:
     def test_get_or_fetch_stores_categories_as_json_string(self):
         """get_or_fetch stores categories as a JSON string in the DB."""
         import sqlite3
-        from server.app import get_or_fetch
+
         import server.app as app_module
+        from server.app import get_or_fetch
 
         with patch("server.app.fetch_article", return_value=MOCK_ARTICLE):
             get_or_fetch("Black hole")
@@ -330,6 +356,7 @@ class TestGetOrFetch:
     def test_get_or_fetch_returns_correct_dict_structure(self):
         """get_or_fetch returns a dict with title, summary, categories, links."""
         from server.app import get_or_fetch
+
         with patch("server.app.fetch_article", return_value=MOCK_ARTICLE):
             result = get_or_fetch("Black hole")
         assert "title" in result
@@ -340,8 +367,9 @@ class TestGetOrFetch:
     def test_get_or_fetch_does_not_write_to_db_when_fetch_returns_none(self):
         """get_or_fetch skips DB writes when fetch_article returns None."""
         import sqlite3
-        from server.app import get_or_fetch
+
         import server.app as app_module
+        from server.app import get_or_fetch
 
         with patch("server.app.fetch_article", return_value=None):
             get_or_fetch("Ghost Article")
@@ -355,12 +383,14 @@ class TestGetOrFetch:
 
 # ── Unit Tests: build_graph ───────────────────────────────────────────────────
 
+
 class TestBuildGraph:
     """Unit tests for BFS graph construction."""
 
     def test_build_graph_depth_zero_returns_only_root(self):
         """build_graph(depth=0) includes only the root node, no neighbors."""
         from server.app import build_graph
+
         with patch("server.app.get_or_fetch", return_value=MOCK_ARTICLE):
             result = build_graph("Black hole", depth=0)
         assert len(result["nodes"]) == 1
@@ -370,8 +400,14 @@ class TestBuildGraph:
     def test_build_graph_depth_one_includes_direct_neighbors(self):
         """build_graph(depth=1) adds the root's linked articles."""
         from server.app import build_graph
+
         articles = {
-            "Root": {"title": "Root", "summary": "", "categories": [], "links": ["Child1", "Child2"]},
+            "Root": {
+                "title": "Root",
+                "summary": "",
+                "categories": [],
+                "links": ["Child1", "Child2"],
+            },
             "Child1": {"title": "Child1", "summary": "", "categories": [], "links": []},
             "Child2": {"title": "Child2", "summary": "", "categories": [], "links": []},
         }
@@ -385,6 +421,7 @@ class TestBuildGraph:
     def test_build_graph_depth_two_expands_two_levels(self):
         """build_graph(depth=2) fetches articles two hops from root."""
         from server.app import build_graph
+
         articles = {
             "Root": {"title": "Root", "summary": "", "categories": [], "links": ["Level1"]},
             "Level1": {"title": "Level1", "summary": "", "categories": [], "links": ["Level2"]},
@@ -400,10 +437,11 @@ class TestBuildGraph:
     def test_build_graph_max_links_limits_edges_per_node(self):
         """build_graph respects max_links and does not expand beyond that limit."""
         from server.app import build_graph
+
         many_links = [f"Link{i}" for i in range(20)]
         articles = {"Root": {"title": "Root", "summary": "", "categories": [], "links": many_links}}
-        for l in many_links:
-            articles[l] = {"title": l, "summary": "", "categories": [], "links": []}
+        for lnk in many_links:
+            articles[lnk] = {"title": lnk, "summary": "", "categories": [], "links": []}
 
         with patch("server.app.get_or_fetch", side_effect=lambda t: articles.get(t)):
             result = build_graph("Root", depth=1, max_links=5)
@@ -414,6 +452,7 @@ class TestBuildGraph:
     def test_build_graph_circular_links_do_not_cause_infinite_loop(self):
         """build_graph terminates correctly even when articles link back to each other."""
         from server.app import build_graph
+
         articles = {
             "A": {"title": "A", "summary": "", "categories": [], "links": ["B"]},
             "B": {"title": "B", "summary": "", "categories": [], "links": ["A"]},
@@ -427,6 +466,7 @@ class TestBuildGraph:
     def test_build_graph_root_node_has_depth_zero(self):
         """The root node in the returned graph always has depth=0."""
         from server.app import build_graph
+
         article = {**MOCK_ARTICLE, "links": []}
         with patch("server.app.get_or_fetch", return_value=article):
             result = build_graph("Black hole", depth=1)
@@ -436,6 +476,7 @@ class TestBuildGraph:
     def test_build_graph_neighbor_nodes_have_depth_one(self):
         """Direct neighbors of the root have depth=1."""
         from server.app import build_graph
+
         articles = {
             "Root": {"title": "Root", "summary": "", "categories": [], "links": ["Child"]},
             "Child": {"title": "Child", "summary": "", "categories": [], "links": []},
@@ -448,8 +489,14 @@ class TestBuildGraph:
     def test_build_graph_edges_exclude_nodes_not_in_graph(self):
         """Edges whose target was never fetched are filtered from the result."""
         from server.app import build_graph
+
         articles = {
-            "Root": {"title": "Root", "summary": "", "categories": [], "links": ["Exists", "Missing"]},
+            "Root": {
+                "title": "Root",
+                "summary": "",
+                "categories": [],
+                "links": ["Exists", "Missing"],
+            },
             "Exists": {"title": "Exists", "summary": "", "categories": [], "links": []},
             # "Missing" not in articles → get_or_fetch returns None
         }
@@ -463,6 +510,7 @@ class TestBuildGraph:
     def test_build_graph_returns_nodes_and_edges_keys(self):
         """build_graph always returns a dict with 'nodes' and 'edges' keys."""
         from server.app import build_graph
+
         with patch("server.app.get_or_fetch", return_value=MOCK_ARTICLE):
             result = build_graph("Black hole", depth=1)
         assert "nodes" in result
@@ -473,6 +521,7 @@ class TestBuildGraph:
     def test_build_graph_root_not_found_returns_empty_graph(self):
         """build_graph returns empty nodes/edges when root article is not found."""
         from server.app import build_graph
+
         with patch("server.app.get_or_fetch", return_value=None):
             result = build_graph("Nonexistent", depth=1)
         assert result["nodes"] == []
@@ -480,6 +529,7 @@ class TestBuildGraph:
 
 
 # ── Contract Tests: /api/search ───────────────────────────────────────────────
+
 
 class TestSearchEndpoint:
     """Contract tests for GET /api/search."""
@@ -501,7 +551,10 @@ class TestSearchEndpoint:
         with patch("requests.get") as mock_get:
             mock_get.return_value.ok = True
             mock_get.return_value.json.return_value = [
-                "black hole", ["Black hole", "Black Holes (film)"], [], []
+                "black hole",
+                ["Black hole", "Black Holes (film)"],
+                [],
+                [],
             ]
             response = client.get("/api/search?q=black+hole")
         assert response.status_code == 200
@@ -528,6 +581,7 @@ class TestSearchEndpoint:
 
 
 # ── Contract Tests: /api/graph ────────────────────────────────────────────────
+
 
 class TestGraphEndpoint:
     """Contract tests for GET /api/graph."""
@@ -556,9 +610,7 @@ class TestGraphEndpoint:
 
     def test_graph_nodes_have_correct_fields(self, client):
         """Each node in the graph response has id, summary, categories, depth."""
-        mock_nodes = [
-            {"id": "Black hole", "summary": "...", "categories": ["A"], "depth": 0}
-        ]
+        mock_nodes = [{"id": "Black hole", "summary": "...", "categories": ["A"], "depth": 0}]
         with patch("server.app.build_graph", return_value={"nodes": mock_nodes, "edges": []}):
             response = client.get("/api/graph?title=Black+hole")
         node = response.json()["nodes"][0]
@@ -585,6 +637,7 @@ class TestGraphEndpoint:
 
 
 # ── Contract Tests: /api/expand ──────────────────────────────────────────────
+
 
 class TestExpandEndpoint:
     """Contract tests for GET /api/expand."""
@@ -630,6 +683,7 @@ class TestExpandEndpoint:
 
 # ── Contract Tests: GET /api/graphs ──────────────────────────────────────────
 
+
 class TestGraphsListEndpoint:
     """Contract tests for GET /api/graphs."""
 
@@ -641,14 +695,18 @@ class TestGraphsListEndpoint:
 
     def test_graphs_list_returns_list_after_save(self, client):
         """GET /api/graphs returns a non-empty list after saving a graph."""
-        client.post("/api/graphs", json={"name": "g1", "root": "Black hole", "depth": 1, "data": {}})
+        client.post(
+            "/api/graphs", json={"name": "g1", "root": "Black hole", "depth": 1, "data": {}}
+        )
         response = client.get("/api/graphs")
         assert response.status_code == 200
         assert len(response.json()) == 1
 
     def test_graphs_list_items_have_id_name_root_depth(self, client):
         """Each item in /api/graphs list has id, name, root, depth fields."""
-        client.post("/api/graphs", json={"name": "g1", "root": "Black hole", "depth": 1, "data": {}})
+        client.post(
+            "/api/graphs", json={"name": "g1", "root": "Black hole", "depth": 1, "data": {}}
+        )
         item = client.get("/api/graphs").json()[0]
         assert "id" in item
         assert "name" in item
@@ -657,21 +715,24 @@ class TestGraphsListEndpoint:
 
     def test_graphs_list_does_not_include_data_field(self, client):
         """GET /api/graphs list items do not include the heavy 'data' field."""
-        client.post("/api/graphs", json={"name": "g1", "root": "Black hole", "depth": 1, "data": {"x": 1}})
+        client.post(
+            "/api/graphs", json={"name": "g1", "root": "Black hole", "depth": 1, "data": {"x": 1}}
+        )
         item = client.get("/api/graphs").json()[0]
         assert "data" not in item
 
 
 # ── Contract Tests: POST /api/graphs ─────────────────────────────────────────
 
+
 class TestSaveGraphEndpoint:
     """Contract tests for POST /api/graphs."""
 
     def test_save_graph_returns_ok_true(self, client):
         """POST /api/graphs returns {ok: True} on success."""
-        response = client.post("/api/graphs", json={
-            "name": "test", "root": "Black hole", "depth": 1, "data": {}
-        })
+        response = client.post(
+            "/api/graphs", json={"name": "test", "root": "Black hole", "depth": 1, "data": {}}
+        )
         assert response.status_code == 200
         assert response.json()["ok"] is True
 
@@ -687,7 +748,9 @@ class TestSaveGraphEndpoint:
 
     def test_save_graph_empty_name_returns_400(self, client):
         """POST /api/graphs with empty-string name returns 400."""
-        response = client.post("/api/graphs", json={"name": "   ", "root": "Black hole", "depth": 1, "data": {}})
+        response = client.post(
+            "/api/graphs", json={"name": "   ", "root": "Black hole", "depth": 1, "data": {}}
+        )
         assert response.status_code == 400
 
     def test_save_graph_stores_in_database(self, client):
@@ -708,12 +771,15 @@ class TestSaveGraphEndpoint:
 
 # ── Contract Tests: GET /api/graphs/{id} ─────────────────────────────────────
 
+
 class TestLoadGraphEndpoint:
     """Contract tests for GET /api/graphs/{gid}."""
 
     def _save_and_get_id(self, client, name="test", root="Black hole", depth=1, data=None):
         """Helper: save a graph and return its assigned ID."""
-        client.post("/api/graphs", json={"name": name, "root": root, "depth": depth, "data": data or {}})
+        client.post(
+            "/api/graphs", json={"name": name, "root": root, "depth": depth, "data": data or {}}
+        )
         return client.get("/api/graphs").json()[0]["id"]
 
     def test_load_graph_returns_200_with_data(self, client):
@@ -750,13 +816,17 @@ class TestLoadGraphEndpoint:
 
 # ── Integration Tests ─────────────────────────────────────────────────────────
 
+
 class TestIntegration:
     """Integration tests — multi-step workflows with a real DB."""
 
     def test_full_save_list_load_cycle(self, client):
         """Saving, listing, and loading a graph should all succeed end-to-end."""
         graph_data = {"nodes": [{"id": "Black hole", "depth": 0}], "edges": []}
-        client.post("/api/graphs", json={"name": "cycle-test", "root": "Black hole", "depth": 1, "data": graph_data})
+        client.post(
+            "/api/graphs",
+            json={"name": "cycle-test", "root": "Black hole", "depth": 1, "data": graph_data},
+        )
         graphs = client.get("/api/graphs").json()
         saved = next(g for g in graphs if g["name"] == "cycle-test")
         loaded = client.get(f"/api/graphs/{saved['id']}").json()
@@ -766,7 +836,10 @@ class TestIntegration:
     def test_multiple_independent_graphs_are_all_accessible(self, client):
         """Multiple saved graphs are listed and loadable independently."""
         for i in range(3):
-            client.post("/api/graphs", json={"name": f"graph{i}", "root": f"Root{i}", "depth": 1, "data": {}})
+            client.post(
+                "/api/graphs",
+                json={"name": f"graph{i}", "root": f"Root{i}", "depth": 1, "data": {}},
+            )
         graphs = client.get("/api/graphs").json()
         assert len(graphs) == 3
         names = {g["name"] for g in graphs}
@@ -786,11 +859,19 @@ class TestIntegration:
         complex_data = {
             "nodes": [
                 {"id": "Black hole", "depth": 0, "categories": ["Physics"], "summary": "..."},
-                {"id": "Albert Einstein", "depth": 1, "categories": ["Scientists"], "summary": "..."},
+                {
+                    "id": "Albert Einstein",
+                    "depth": 1,
+                    "categories": ["Scientists"],
+                    "summary": "...",
+                },
             ],
             "edges": [{"source": "Black hole", "target": "Albert Einstein"}],
         }
-        client.post("/api/graphs", json={"name": "complex", "root": "Black hole", "depth": 1, "data": complex_data})
+        client.post(
+            "/api/graphs",
+            json={"name": "complex", "root": "Black hole", "depth": 1, "data": complex_data},
+        )
         gid = client.get("/api/graphs").json()[0]["id"]
         loaded = client.get(f"/api/graphs/{gid}").json()
         assert len(loaded["data"]["nodes"]) == 2
@@ -808,10 +889,15 @@ class TestIntegration:
             graph_resp = client.get("/api/graph?title=Black+hole")
         assert graph_resp.status_code == 200
 
-        save_resp = client.post("/api/graphs", json={
-            "name": "pipeline-test", "root": "Black hole",
-            "depth": 1, "data": graph_resp.json(),
-        })
+        save_resp = client.post(
+            "/api/graphs",
+            json={
+                "name": "pipeline-test",
+                "root": "Black hole",
+                "depth": 1,
+                "data": graph_resp.json(),
+            },
+        )
         assert save_resp.json()["ok"] is True
 
     def test_graphs_listed_most_recent_first(self, client):

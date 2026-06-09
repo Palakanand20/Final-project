@@ -6,14 +6,14 @@ Usage:
     python gui/main.py
 """
 
-import sys
 import math
+import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import messagebox, simpledialog, ttk
+
 sys.path.insert(0, ".")
 
-from client.api import search, get_graph, list_graphs, save_graph, load_graph
-
+from client.api import get_graph, list_graphs, load_graph, save_graph
 
 COLORS = ["#7c9ef8", "#50c896", "#f5a623", "#e05c5c"]
 BG = "#0f1117"
@@ -43,41 +43,83 @@ class WikiExplorerGUI:
         header = tk.Frame(self.root, bg=PANEL_BG, pady=10)
         header.pack(fill=tk.X)
 
-        tk.Label(header, text="Wiki Rabbit Hole", bg=PANEL_BG, fg="#7c9ef8",
-                 font=("Helvetica", 14, "bold")).pack(side=tk.LEFT, padx=16)
+        tk.Label(
+            header,
+            text="Wiki Rabbit Hole",
+            bg=PANEL_BG,
+            fg="#7c9ef8",
+            font=("Helvetica", 14, "bold"),
+        ).pack(side=tk.LEFT, padx=16)
 
         self.search_var = tk.StringVar()
-        search_entry = tk.Entry(header, textvariable=self.search_var,
-                                bg="#0f1117", fg=TEXT, insertbackground=TEXT,
-                                relief=tk.FLAT, font=("Helvetica", 12), width=30)
+        search_entry = tk.Entry(
+            header,
+            textvariable=self.search_var,
+            bg="#0f1117",
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief=tk.FLAT,
+            font=("Helvetica", 12),
+            width=30,
+        )
         search_entry.pack(side=tk.LEFT, padx=8, ipady=6, ipadx=6)
         search_entry.bind("<Return>", lambda e: self.do_explore())
 
-        tk.Label(header, text="Depth:", bg=PANEL_BG, fg=DIM,
-                 font=("Helvetica", 10)).pack(side=tk.LEFT, padx=(8, 2))
+        tk.Label(header, text="Depth:", bg=PANEL_BG, fg=DIM, font=("Helvetica", 10)).pack(
+            side=tk.LEFT, padx=(8, 2)
+        )
         self.depth_var = tk.IntVar(value=1)
-        depth_spin = ttk.Spinbox(header, from_=1, to=3, textvariable=self.depth_var,
-                                 width=3, font=("Helvetica", 11))
+        depth_spin = ttk.Spinbox(
+            header, from_=1, to=3, textvariable=self.depth_var, width=3, font=("Helvetica", 11)
+        )
         depth_spin.pack(side=tk.LEFT)
 
-        explore_btn = tk.Button(header, text="Explore", command=self.do_explore,
-                                bg="#7c9ef8", fg=BG, font=("Helvetica", 11, "bold"),
-                                relief=tk.FLAT, padx=12, pady=4, cursor="hand2")
+        explore_btn = tk.Button(
+            header,
+            text="Explore",
+            command=self.do_explore,
+            bg="#7c9ef8",
+            fg=BG,
+            font=("Helvetica", 11, "bold"),
+            relief=tk.FLAT,
+            padx=12,
+            pady=4,
+            cursor="hand2",
+        )
         explore_btn.pack(side=tk.LEFT, padx=8)
 
-        save_btn = tk.Button(header, text="Save Graph", command=self.do_save,
-                             bg=PANEL_BG, fg="#7c9ef8", font=("Helvetica", 10),
-                             relief=tk.FLAT, padx=8, pady=4, cursor="hand2")
+        save_btn = tk.Button(
+            header,
+            text="Save Graph",
+            command=self.do_save,
+            bg=PANEL_BG,
+            fg="#7c9ef8",
+            font=("Helvetica", 10),
+            relief=tk.FLAT,
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        )
         save_btn.pack(side=tk.LEFT, padx=4)
 
-        load_btn = tk.Button(header, text="Load Graph", command=self.do_load,
-                             bg=PANEL_BG, fg="#7c9ef8", font=("Helvetica", 10),
-                             relief=tk.FLAT, padx=8, pady=4, cursor="hand2")
+        load_btn = tk.Button(
+            header,
+            text="Load Graph",
+            command=self.do_load,
+            bg=PANEL_BG,
+            fg="#7c9ef8",
+            font=("Helvetica", 10),
+            relief=tk.FLAT,
+            padx=8,
+            pady=4,
+            cursor="hand2",
+        )
         load_btn.pack(side=tk.LEFT, padx=4)
 
         self.status_var = tk.StringVar(value="Search for a topic to begin")
-        tk.Label(header, textvariable=self.status_var, bg=PANEL_BG, fg=DIM,
-                 font=("Helvetica", 10)).pack(side=tk.RIGHT, padx=16)
+        tk.Label(
+            header, textvariable=self.status_var, bg=PANEL_BG, fg=DIM, font=("Helvetica", 10)
+        ).pack(side=tk.RIGHT, padx=16)
 
         # ── Main area ─────────────────────────────────────────────────────────
         main = tk.Frame(self.root, bg=BG)
@@ -95,9 +137,16 @@ class WikiExplorerGUI:
         self.tooltip.withdraw()
         self.tooltip.overrideredirect(True)
         self.tooltip.configure(bg=PANEL_BG)
-        self.tooltip_label = tk.Label(self.tooltip, bg=PANEL_BG, fg=TEXT,
-                                      font=("Helvetica", 10), wraplength=250,
-                                      justify=tk.LEFT, padx=10, pady=8)
+        self.tooltip_label = tk.Label(
+            self.tooltip,
+            bg=PANEL_BG,
+            fg=TEXT,
+            font=("Helvetica", 10),
+            wraplength=250,
+            justify=tk.LEFT,
+            padx=10,
+            pady=8,
+        )
         self.tooltip_label.pack()
 
     def set_status(self, msg):
@@ -129,8 +178,9 @@ class WikiExplorerGUI:
         self.node_items = {}
 
         if not nodes:
-            self.canvas.create_text(550, 350, text="No nodes found", fill=DIM,
-                                    font=("Helvetica", 14))
+            self.canvas.create_text(
+                550, 350, text="No nodes found", fill=DIM, font=("Helvetica", 14)
+            )
             return
 
         W = self.canvas.winfo_width() or 800
@@ -157,10 +207,17 @@ class WikiExplorerGUI:
                     self.node_positions[n["id"]] = (x, y)
 
         # Draw edges
-        node_ids = {n["id"] for n in nodes}
         for e in edges:
-            src = e.get("source") if isinstance(e.get("source"), str) else e.get("source", {}).get("id", "")
-            tgt = e.get("target") if isinstance(e.get("target"), str) else e.get("target", {}).get("id", "")
+            src = (
+                e.get("source")
+                if isinstance(e.get("source"), str)
+                else e.get("source", {}).get("id", "")
+            )
+            tgt = (
+                e.get("target")
+                if isinstance(e.get("target"), str)
+                else e.get("target", {}).get("id", "")
+            )
             if src in self.node_positions and tgt in self.node_positions:
                 x1, y1 = self.node_positions[src]
                 x2, y2 = self.node_positions[tgt]
@@ -176,19 +233,26 @@ class WikiExplorerGUI:
             r = 18 if depth == 0 else 10
             color = COLORS[min(depth, 3)]
 
-            circle = self.canvas.create_oval(x - r, y - r, x + r, y + r,
-                                              fill=color, outline="white", width=1.5,
-                                              tags=("node", nid))
+            circle = self.canvas.create_oval(
+                x - r,
+                y - r,
+                x + r,
+                y + r,
+                fill=color,
+                outline="white",
+                width=1.5,
+                tags=("node", nid),
+            )
             label = nid if len(nid) <= 18 else nid[:16] + "..."
-            text = self.canvas.create_text(x, y + r + 10, text=label,
-                                           fill=TEXT, font=("Helvetica", 9),
-                                           tags=("label", nid))
+            text = self.canvas.create_text(
+                x, y + r + 10, text=label, fill=TEXT, font=("Helvetica", 9), tags=("label", nid)
+            )
             self.node_items[nid] = (circle, text, n)
 
             self.canvas.tag_bind(circle, "<Enter>", lambda e, node=n: self.show_tooltip(e, node))
             self.canvas.tag_bind(circle, "<Leave>", lambda e: self.hide_tooltip())
-            self.canvas.tag_bind(text,   "<Enter>", lambda e, node=n: self.show_tooltip(e, node))
-            self.canvas.tag_bind(text,   "<Leave>", lambda e: self.hide_tooltip())
+            self.canvas.tag_bind(text, "<Enter>", lambda e, node=n: self.show_tooltip(e, node))
+            self.canvas.tag_bind(text, "<Leave>", lambda e: self.hide_tooltip())
 
     def show_tooltip(self, event, node):
         summary = node.get("summary", "")
@@ -246,8 +310,16 @@ class WikiExplorerGUI:
     def _redraw_edges(self):
         self.canvas.delete("edge")
         for e in self.graph_data["edges"]:
-            src = e.get("source") if isinstance(e.get("source"), str) else e.get("source", {}).get("id", "")
-            tgt = e.get("target") if isinstance(e.get("target"), str) else e.get("target", {}).get("id", "")
+            src = (
+                e.get("source")
+                if isinstance(e.get("source"), str)
+                else e.get("source", {}).get("id", "")
+            )
+            tgt = (
+                e.get("target")
+                if isinstance(e.get("target"), str)
+                else e.get("target", {}).get("id", "")
+            )
             if src in self.node_positions and tgt in self.node_positions:
                 x1, y1 = self.node_positions[src]
                 x2, y2 = self.node_positions[tgt]
@@ -281,8 +353,9 @@ class WikiExplorerGUI:
             return
 
         options = [f"{g['id']}: {g['name']} ({g['root']}, depth {g['depth']})" for g in graphs]
-        choice = simpledialog.askstring("Load Graph",
-                                        "Saved graphs:\n" + "\n".join(options) + "\n\nEnter ID:")
+        choice = simpledialog.askstring(
+            "Load Graph", "Saved graphs:\n" + "\n".join(options) + "\n\nEnter ID:"
+        )
         if not choice:
             return
         try:
@@ -298,7 +371,7 @@ class WikiExplorerGUI:
 
 def main():
     root = tk.Tk()
-    app = WikiExplorerGUI(root)
+    _app = WikiExplorerGUI(root)
     root.mainloop()
 
 

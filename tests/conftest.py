@@ -7,9 +7,9 @@ Provides: MOCK_ARTICLE constant, make_mock_response helper,
 
 import os
 import sys
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
